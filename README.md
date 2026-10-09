@@ -12,7 +12,7 @@ hdop validate .
 hdop pack . --out my-plugin.hdop
 ```
 
-`--runtime python`, `ts` or `hybrid` selects the scaffold. The Python SDK is provided by HDO at runtime. For TypeScript type checking, install `@openhdo/plugin-sdk` from the [SDK repository](https://github.com/OpenHDO/sdk/tree/codex/plugin-v1/typescript) after building that package; imports of its types are erased by esbuild. `build` executes the author's npm build script; validation/packaging never executes plugin entrypoints.
+`--runtime python`, `ts` or `hybrid` selects the scaffold. The Python SDK is provided by HDO at runtime. For TypeScript type checking, install `@openhdo/plugin-sdk` from the [SDK repository](https://github.com/OpenHDO/sdk/tree/main/typescript) after building that package; imports of its types are erased by esbuild. `build` executes the author's npm build script; validation/packaging never executes plugin entrypoints.
 
 Install via the panel's **Plugins → Install .hdop**, or set the server's API token in `HDO_TOKEN` and use:
 
@@ -29,7 +29,7 @@ PowerShell: `$env:HDO_TOKEN = "your-server-api-token"`; POSIX shell: `export HDO
 
 The archive is a ZIP with manifest and per-file SHA-256 checksums, not a publisher signature. Shared SDK validation rejects traversal, symlinks, duplicate/case-colliding names, invalid manifests, corrupt payloads and oversized archives. Only trusted plugins should be enabled.
 
-See the complete [manifest and SDK guide](https://github.com/OpenHDO/sdk/blob/codex/plugin-v1/docs/plugins.md). Run tests with `python -m unittest discover -s tests -v`.
+See the complete [manifest and SDK guide](https://github.com/OpenHDO/sdk/blob/main/docs/plugins.md). Run tests with `python -m unittest discover -s tests -v`.
 
 ## One plugin = one repository
 
