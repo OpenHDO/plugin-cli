@@ -1,0 +1,83 @@
+name: Build and release an HDO plugin
+
+on:
+  workflow_call:
+    inputs:
+      cli-ref:
+        description: Immutable version or commit of the packaging CLI
+        type: string
+        default: v1.1.0
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      artifact: ${{ steps.package.outputs.artifact }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        if: ${{ hashFiles('package.json') != '' }}
+        with:
+          node-version: "22"
+      - name: Install HDO plugin CLI
+        env:
+          CLI_REF: ${{ inputs.cli-ref }}
+        run: python -m pip install "git+https://github.com/OpenHDO/plugin-cli.git@$CLI_REF"
+      - name: Install build dependencies
+        if: ${{ hashFiles('package.json') != '' }}
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Build and validate plugin
+        run: |
+          hdop build .
+          hdop validate .
+      - name: Package plugin
+        id: package
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          artifact=$(python -c 'import json; m=json.load(open("hdo.json")); print(m["id"] + "-" + m["version"])')
+          mkdir -p dist
+          args=()
+          if [ "$REF_TYPE" = tag ]; then args+=(--tag "$REF_NAME"); fi
+          hdop pack . --out "dist/$artifact.hdop" "${args[@]}"
+          hdop validate "dist/$artifact.hdop"
+          (cd dist && sha256sum "$artifact.hdop" > "$artifact.hdop.sha256")
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.artifact }}
+          path: |
+            dist/*.hdop
+            dist/*.hdop.sha256
+          if-no-files-found: error
+
+  release:
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: dist
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          args=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" dist/*.hdop dist/*.hdop.sha256 --verify-tag --generate-notes "${args[@]}"

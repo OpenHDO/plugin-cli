@@ -22,11 +22,13 @@ def pack(source, target):
     files = {}
     for path in sorted(source.rglob("*")):
         relative = path.relative_to(source)
-        if any(part in IGNORED for part in relative.parts) or path == target or path.suffix == ".hdop":
+        if any(part in IGNORED for part in relative.parts) or path == target or path.suffix == ".hdop" or path.name.endswith(".hdop.sha256"):
             continue
         if path.is_symlink():
             raise PluginError("Symlinks cannot be packaged")
         if path.is_file() and relative.as_posix() != "checksums.json":
+            if path.name == "hdo.json" and relative.as_posix() != "hdo.json":
+                raise PluginError("One plugin per repository: only the root hdo.json is allowed")
             safe_path(relative.as_posix())
             files[relative.as_posix()] = path.read_bytes()
     if len(files) > MAX_FILES or sum(map(len, files.values())) > MAX_EXPANDED_BYTES:
@@ -71,6 +73,8 @@ def unpack(package, destination):
             names.add(info.filename); folded.add(info.filename.casefold())
         if not {"hdo.json", "checksums.json"} <= names:
             raise PluginError("Missing manifest or checksums")
+        if any(name.endswith("/hdo.json") for name in names):
+            raise PluginError("A .hdop package must contain exactly one plugin")
         hashes = json.loads(archive.read("checksums.json"))
         if not isinstance(hashes, dict) or set(hashes) != names - {"checksums.json"}:
             raise PluginError("Checksum inventory does not match package")

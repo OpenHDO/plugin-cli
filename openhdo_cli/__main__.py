@@ -10,6 +10,22 @@ import urllib.request
 from pathlib import Path
 from openhdo_plugin import PluginError, pack, unpack, validate_manifest
 
+WORKFLOW = '''name: Plugin CI and release
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plugin:
+    permissions:
+      contents: write
+    uses: OpenHDO/plugin-cli/.github/workflows/plugin-release.yml@v1.1.0
+'''
+
 
 def scaffold(directory, id, runtime):
     manifest = dict(schemaVersion=1, apiVersion=1, id=id, name=id, version="1.0.0", permissions=[], entrypoints={}, contributes={})
@@ -42,6 +58,22 @@ export function activate(host: PluginHost) {
 ''', "utf-8")
         (directory / "package.json").write_text(json.dumps({"name": id, "private": True, "type": "module", "scripts": {"build": "esbuild src/plugin.ts --bundle --format=esm --outfile=web/plugin.js"}, "devDependencies": {"esbuild": "^0.25.0", "typescript": "^5.7.0"}}, indent=2), "utf-8")
     (directory / ".gitignore").write_text("node_modules/\n__pycache__/\n*.hdop\n", "utf-8")
+    workflows = directory / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "plugin.yml").write_text(WORKFLOW, "utf-8")
+    (directory / "README.md").write_text(f'''# {id}
+
+One HDO plugin = one repository. `hdo.json` lives at the repository root;
+Python, TypeScript, themes and other contributions belong to this same plugin.
+
+Build locally with `hdop build .`, `hdop validate .` and
+`hdop pack . --out {id}.hdop`. Install the archive in HDO's Plugins tab.
+
+Commit the npm lockfile after installing dependencies. CI builds and validates
+the plugin through HDO's CLI. For a release, set the manifest version and push
+the matching tag (`v1.0.0` for version `1.0.0`). CI publishes the `.hdop` and
+SHA-256 checksum in GitHub Releases. No additional secrets are required.
+''', "utf-8")
     return directory
 
 
@@ -65,7 +97,7 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     init = commands.add_parser("init"); init.add_argument("directory"); init.add_argument("--id", required=True); init.add_argument("--runtime", choices=["python", "ts", "hybrid"], default="hybrid")
     build = commands.add_parser("build"); build.add_argument("directory", nargs="?", default=".")
-    package = commands.add_parser("pack"); package.add_argument("directory", nargs="?", default="."); package.add_argument("--out", required=True)
+    package = commands.add_parser("pack"); package.add_argument("directory", nargs="?", default="."); package.add_argument("--out", required=True); package.add_argument("--tag", help="Require v<manifest-version> before packaging a release")
     validate = commands.add_parser("validate"); validate.add_argument("path")
     for name in ["install", "list", "enable", "disable", "remove", "scan"]:
         command = commands.add_parser(name); command.add_argument("--server", default="http://localhost:8000")
@@ -82,6 +114,10 @@ def main(argv=None):
                 subprocess.run([npm, "run", "build"], cwd=directory, check=True)
             print("Build complete")
         elif args.command == "pack":
+            if args.tag:
+                manifest = validate_manifest(json.loads((Path(args.directory) / "hdo.json").read_text("utf-8")))
+                if args.tag != "v" + manifest["version"]:
+                    raise PluginError("Release tag must equal v" + manifest["version"])
             print(pack(args.directory, args.out))
         elif args.command == "validate":
             path = Path(args.path)
