@@ -3,11 +3,15 @@ import asyncio
 import json
 import logging
 import sqlite3
+from contextvars import ContextVar
 from typing import Protocol, Any
+from .types import DeviceSnapshot
+
+current_plugin = ContextVar("hdo_current_plugin", default="host")
 
 
 class Provider(Protocol):
-    async def devices(self, config: dict) -> list[dict]: ...
+    async def devices(self, config: dict) -> list[DeviceSnapshot]: ...
     async def command(self, config: dict, external_id: str, code: str, value: Any) -> None: ...
 
 
